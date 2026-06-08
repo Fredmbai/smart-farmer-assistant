@@ -10,6 +10,7 @@ from .serializers import CropCycleSerializer, FarmSerializer, PlotSerializer
 class FarmViewSet(ModelViewSet):
     serializer_class = FarmSerializer
     permission_classes = [IsAuthenticated]
+    lookup_url_kwarg = 'farm_id'
 
     def get_queryset(self):
         return Farm.objects.filter(user=self.request.user)

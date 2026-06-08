@@ -1,3 +1,4 @@
+from django.conf import settings
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -45,11 +46,11 @@ class RegisterView(APIView):
         user.set_password(data['password'])
         user.save()
 
-        WhatsAppOTPService.send_otp(phone_number)
-        return Response(
-            {'message': f'OTP sent to {phone_number}'},
-            status=status.HTTP_201_CREATED,
-        )
+        otp_result = WhatsAppOTPService.send_otp(phone_number)
+        response_data = {'message': f'OTP sent to {phone_number}'}
+        if settings.DEBUG:
+            response_data['debug_otp'] = otp_result
+        return Response(response_data, status=status.HTTP_201_CREATED)
 
 
 class VerifyOTPView(APIView):
@@ -122,8 +123,11 @@ class ResendOTPView(APIView):
         except User.DoesNotExist:
             return Response({'error': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        WhatsAppOTPService.send_otp(phone_number)
-        return Response({'message': 'OTP resent.'}, status=status.HTTP_200_OK)
+        otp_result = WhatsAppOTPService.send_otp(phone_number)
+        response_data = {'message': 'OTP resent.'}
+        if settings.DEBUG:
+            response_data['debug_otp'] = otp_result
+        return Response(response_data, status=status.HTTP_200_OK)
 
 
 class UpdateProfileView(APIView):

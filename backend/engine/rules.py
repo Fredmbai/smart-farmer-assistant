@@ -8,11 +8,21 @@ POTATO_RULES = {
     'ph_min_optimal': 5.0,
     'ph_max_optimal': 6.5,
     'late_blight_temp_max': 18,
-    'late_blight_humidity_min': 80,
+    'late_blight_humidity_min': 80,       # default threshold
     'frost_temp_critical': 2,
     'npk_n_low': 40,
     'npk_p_low': 20,
     'npk_k_low': 30,
+}
+
+# Variety-specific late-blight humidity thresholds (°C ≤ 18 condition)
+# Lower threshold = more sensitive variety triggers alert sooner
+LATE_BLIGHT_HUMIDITY_BY_VARIETY = {
+    'shangi':       78,   # high susceptibility — triggers earliest
+    'dutch_robijn': 82,   # low susceptibility
+    'markies':      82,   # medium
+    'kenya_mpya':   90,   # very_low — almost never triggers
+    'tigoni':       82,   # medium
 }
 
 
@@ -175,15 +185,40 @@ class PotatoRuleEngine:
 
     def _check_late_blight(self):
         results = []
-        temp = self.sensor.get('temperature')
+        temp     = self.sensor.get('temperature')
         humidity = self.sensor.get('humidity')
         if temp is None or humidity is None:
             return results
-        temp = float(temp)
+        temp     = float(temp)
         humidity = float(humidity)
 
-        if (temp <= POTATO_RULES['late_blight_temp_max'] and
-                humidity >= POTATO_RULES['late_blight_humidity_min']):
+        variety = self.sensor.get('variety', 'shangi')
+        hum_threshold = LATE_BLIGHT_HUMIDITY_BY_VARIETY.get(
+            variety, POTATO_RULES['late_blight_humidity_min']
+        )
+
+        if temp > POTATO_RULES['late_blight_temp_max']:
+            return results   # temperature not in danger zone
+
+        if variety == 'kenya_mpya' and humidity >= hum_threshold:
+            # Resistant variety — info-level monitoring alert only
+            results.append({
+                'rule_name': 'blight_monitor',
+                'level': 'info',
+                'category': 'disease',
+                'title': 'Info: Monitor for blight (Kenya Mpya)',
+                'message': (
+                    f"Temperature ({temp}°C) and humidity ({humidity}%) "
+                    f"are in blight-risk conditions. Kenya Mpya has high "
+                    f"blight resistance, but inspect leaves as a precaution."
+                ),
+                'action_required': 'Inspect leaves for early blight signs.',
+            })
+        elif humidity >= hum_threshold:
+            variety_note = (
+                f" Note: {variety.replace('_', ' ').title()} has "
+                f"{'high' if variety == 'shangi' else 'medium'} susceptibility."
+            )
             results.append({
                 'rule_name': 'late_blight_risk',
                 'level': 'critical',
@@ -191,10 +226,10 @@ class PotatoRuleEngine:
                 'title': 'Critical: Late Blight conditions detected',
                 'message': (
                     f"Temperature ({temp}°C) and humidity ({humidity}%) "
-                    f"are in the Late Blight danger zone. "
-                    f"Late Blight (Phytophthora infestans) can destroy "
-                    f"a potato crop within days. "
-                    f"Apply fungicide immediately and inspect leaves."
+                    f"are in the Late Blight danger zone "
+                    f"(threshold for this variety: {hum_threshold}% humidity). "
+                    f"Late Blight (Phytophthora infestans) can destroy a crop "
+                    f"within days.{variety_note} Apply fungicide immediately."
                 ),
                 'action_required': (
                     'Apply copper-based fungicide immediately. '

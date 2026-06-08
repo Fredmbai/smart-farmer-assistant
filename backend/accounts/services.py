@@ -26,8 +26,10 @@ class WhatsAppOTPService:
         )
 
         if settings.DEBUG:
-            print(f'[DEBUG] OTP for {phone_number}: {otp}')
-            return True
+            print('=' * 50)
+            print(f'DEBUG OTP for {phone_number}: {otp}')
+            print('=' * 50)
+            return otp
 
         url = f'https://graph.facebook.com/v18.0/{settings.WHATSAPP_PHONE_ID}/messages'
         headers = {

@@ -24,11 +24,12 @@ class Farm(models.Model):
 
 
 VARIETY_CHOICES = [
-    ('shangi', 'Shangi'),
+    ('shangi',       'Shangi'),
     ('dutch_robijn', 'Dutch Robijn'),
-    ('kenya_mpya', 'Kenya Mpya'),
-    ('tigoni', 'Tigoni'),
-    ('other', 'Other'),
+    ('markies',      'Markies'),
+    ('kenya_mpya',   'Kenya Mpya'),
+    ('tigoni',       'Tigoni'),
+    ('other',        'Other'),
 ]
 
 
@@ -63,12 +64,29 @@ class CropCycle(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # Variety → maturity days mapping
+    MATURITY_DAYS = {
+        'shangi':       90,
+        'dutch_robijn': 105,
+        'kenya_mpya':   105,
+        'tigoni':       105,
+        'markies':      115,
+        'other':        120,
+    }
+    DEFAULT_MATURITY = 120
+
+    def _maturity_days(self):
+        variety = (self.variety or '').strip().lower() or \
+                  (self.plot.variety or '').strip().lower()
+        return self.MATURITY_DAYS.get(variety, self.DEFAULT_MATURITY)
+
     def save(self, *args, **kwargs):
         if self.planting_date:
             if self.status == 'pending':
                 self.status = 'active'
             if self.expected_harvest_date is None:
-                self.expected_harvest_date = self.planting_date + timedelta(days=120)
+                days = self._maturity_days()
+                self.expected_harvest_date = self.planting_date + timedelta(days=days)
         super().save(*args, **kwargs)
 
     @property
@@ -81,16 +99,18 @@ class CropCycle(models.Model):
     def growth_stage(self):
         if not self.planting_date:
             return 'unknown'
-        days = self.days_since_planting
+        days     = self.days_since_planting
+        maturity = self._maturity_days()
+
         if days < 0:
             return 'not_planted'
-        if days <= 30:
+        if days <= maturity * 0.25:
             return 'sprouting'
-        if days <= 60:
+        if days <= maturity * 0.50:
             return 'vegetative'
-        if days <= 90:
+        if days <= maturity * 0.75:
             return 'flowering'
-        if days <= 120:
+        if days <= maturity:
             return 'tuber_bulking'
         return 'maturity'
 

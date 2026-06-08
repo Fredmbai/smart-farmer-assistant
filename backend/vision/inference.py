@@ -5,7 +5,8 @@ import numpy as np
 from PIL import Image
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-MODEL_PATH = BASE_DIR / 'vision' / 'ml' / 'model.h5'
+MODEL_PATH = BASE_DIR / 'vision' / 'ml' / 'model.keras'
+MODEL_PATH_H5 = BASE_DIR / 'vision' / 'ml' / 'model.h5'
 
 CLASS_LABELS = ['early_blight', 'healthy', 'late_blight']
 
@@ -42,12 +43,18 @@ _MOCK_WEIGHTS = [0.60, 0.25, 0.15]
 class PotatoDiseaseClassifier:
 
     def __init__(self):
+        model_path = None
         if MODEL_PATH.exists():
+            model_path = MODEL_PATH
+        elif MODEL_PATH_H5.exists():
+            model_path = MODEL_PATH_H5
+
+        if model_path:
             try:
-                from tensorflow.keras.models import load_model
-                self.model = load_model(str(MODEL_PATH))
+                import tensorflow as tf
+                self.model = tf.keras.models.load_model(str(model_path))
                 self.mode = 'real'
-                print("Vision model loaded — real inference mode")
+                print(f"Vision model loaded from {model_path} — real mode")
             except Exception as e:
                 print(f"Failed to load model ({e}) — falling back to mock mode")
                 self.model = None
@@ -58,7 +65,8 @@ class PotatoDiseaseClassifier:
             print("No model file found — running in mock mode")
 
     def preprocess_image(self, image_path):
-        img = Image.open(image_path).convert('RGB').resize((224, 224))
+        img = Image.open(image_path).convert('RGB')
+        img = img.resize((224, 224))
         arr = np.array(img, dtype=np.float32) / 255.0
         return np.expand_dims(arr, axis=0)
 
@@ -75,14 +83,17 @@ class PotatoDiseaseClassifier:
                 }
 
             preprocessed = self.preprocess_image(image_path)
-            predictions = self.model.predict(preprocessed, verbose=0)
-            class_idx = int(predictions.argmax())
-            confidence = float(predictions.max())
-            diagnosis = CLASS_LABELS[class_idx]
+            preds = self.model.predict(preprocessed, verbose=0)
+            idx = preds.argmax()
+            confidence = float(preds.max())
+            if confidence < 0.60:
+                diagnosis = 'unknown'
+            else:
+                diagnosis = CLASS_LABELS[idx]
             return {
                 'diagnosis': diagnosis,
                 'confidence': round(confidence, 4),
-                'recommendation': RECOMMENDATIONS.get(diagnosis, RECOMMENDATIONS['unknown']),
+                'recommendation': RECOMMENDATIONS[diagnosis],
                 'model_version': 'mobilenetv3_v1',
             }
 
