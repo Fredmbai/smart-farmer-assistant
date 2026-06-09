@@ -206,6 +206,9 @@ class DecisionEngine:
                 action_required=rule.get('action_required', ''),
             )
 
+        from weather.services import WeatherService
+        weather_summary = WeatherService().get_weather_summary(plot.farm)
+
         return {
             'analysis_id':        str(analysis.id),
             'health_score':       score,
@@ -217,4 +220,5 @@ class DecisionEngine:
             'total_alerts':       len(rule_results),
             'model_version':      self.model_version,
             'variety':            variety,
+            'weather_summary':    weather_summary,
         }

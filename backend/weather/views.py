@@ -54,3 +54,24 @@ class RefreshWeatherView(APIView):
             )
 
         return Response(WeatherDataSerializer(weather).data, status=status.HTTP_200_OK)
+
+
+class WeatherSummaryView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, farm_id):
+        farm = Farm.objects.filter(id=farm_id, user=request.user).first()
+        if not farm:
+            return Response(
+                {'detail': 'Farm not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        summary = WeatherService().get_weather_summary(farm)
+        if not summary:
+            return Response(
+                {'detail': 'No weather data available for this farm.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        return Response(summary)

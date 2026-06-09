@@ -140,6 +140,14 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'notifications.tasks.send_weekly_summary_task',
         'schedule': crontab(hour=7, minute=0, day_of_week=1),
     },
+    'scrape-nafis-weekly': {
+        'task': 'market.tasks.scrape_nafis_prices',
+        'schedule': crontab(hour=6, minute=0, day_of_week=1),
+    },
+    'check-regional-disease-alerts': {
+        'task': 'engine.tasks.check_regional_disease_alerts',
+        'schedule': crontab(hour=7, minute=30),
+    },
 }
 
 # --- MQTT ---

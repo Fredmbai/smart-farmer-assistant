@@ -122,13 +122,14 @@ export default function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error,      setError]      = useState('');
 
-  const [farms,       setFarms]       = useState([]);
-  const [plots,       setPlots]       = useState([]);
-  const [weather,     setWeather]     = useState(null);
-  const [analysis,    setAnalysis]    = useState(null);
-  const [alerts,      setAlerts]      = useState([]);
-  const [reading,     setReading]     = useState(null);
-  const [plotLoading, setPlotLoading] = useState(false);
+  const [farms,          setFarms]          = useState([]);
+  const [plots,          setPlots]          = useState([]);
+  const [weather,        setWeather]        = useState(null);
+  const [weatherSummary, setWeatherSummary] = useState(null);
+  const [analysis,       setAnalysis]       = useState(null);
+  const [alerts,         setAlerts]         = useState([]);
+  const [reading,        setReading]        = useState(null);
+  const [plotLoading,    setPlotLoading]    = useState(false);
   const [analysisRunning, setAnalysisRunning] = useState(false);
 
   // Stable fetchData — reads current store state via getState() to avoid
@@ -157,8 +158,12 @@ export default function DashboardScreen() {
       setPlots(plotsData);
 
       if (!plotsData.length) {
-        const wx = await weatherService.getWeather(farm.id).catch(() => null);
+        const [wx, wxs] = await Promise.all([
+          weatherService.getWeather(farm.id).catch(() => null),
+          weatherService.getWeatherSummary(farm.id).catch(() => null),
+        ]);
         setWeather(wx);
+        setWeatherSummary(wxs);
         setLoading(false); setRefreshing(false); return;
       }
 
@@ -167,14 +172,16 @@ export default function DashboardScreen() {
       const plot = validStored ?? plotsData[0];
       setActivePlot(plot);
 
-      const [wx, anal, alertsData, rdg] = await Promise.all([
+      const [wx, wxs, anal, alertsData, rdg] = await Promise.all([
         weatherService.getWeather(farm.id).catch(() => null),
+        weatherService.getWeatherSummary(farm.id).catch(() => null),
         engineService.getLatestAnalysis(plot.id).catch(() => null),
         engineService.getAlerts().catch(() => []),
         iotService.getLatestReading(plot.id).catch(() => null),
       ]);
 
       setWeather(wx);
+      setWeatherSummary(wxs);
       setAnalysis(anal);
       // Filter alerts to only those belonging to the active plot
       const plotAlerts = Array.isArray(alertsData)
@@ -226,14 +233,17 @@ export default function DashboardScreen() {
     setReading(null);
     setAlerts([]);
     setWeather(null);
+    setWeatherSummary(null);
     setPlotLoading(true);
     try {
-      const [plotsData, wx] = await Promise.all([
+      const [plotsData, wx, wxs] = await Promise.all([
         farmService.getPlots(farm.id).catch(() => []),
         weatherService.getWeather(farm.id).catch(() => null),
+        weatherService.getWeatherSummary(farm.id).catch(() => null),
       ]);
       setPlots(plotsData);
       setWeather(wx);
+      setWeatherSummary(wxs);
       if (plotsData.length > 0) {
         const first = plotsData[0];
         setActivePlot(first);
@@ -470,7 +480,7 @@ export default function DashboardScreen() {
 
         {/* ── Weather ──────────────────────────────────────────────── */}
         {!!activeFarm && (
-          <WeatherCard weather={weather} />
+          <WeatherCard weather={weather} summary={weatherSummary} />
         )}
 
         {/* ── AI recommendation ────────────────────────────────────── */}
@@ -642,8 +652,16 @@ function SoilCell({ icon, label, value, color }) {
   );
 }
 
-function WeatherCard({ weather }) {
-  if (!weather) {
+const ADVISORY_STYLE = {
+  rain_heavy:  { bg: '#EFF6FF', border: '#3B82F6', text: '#1D4ED8', emoji: '🌧️' },
+  rain_likely: { bg: '#EFF6FF', border: '#60A5FA', text: '#1D4ED8', emoji: '🌦️' },
+  hot_dry:     { bg: '#FFF7ED', border: '#F97316', text: '#9A3412', emoji: '☀️' },
+  cool:        { bg: '#F0FDF4', border: '#4ADE80', text: '#166534', emoji: '🌿' },
+  good:        { bg: '#F0FDF4', border: '#22C55E', text: '#166534', emoji: '✅' },
+};
+
+function WeatherCard({ weather, summary }) {
+  if (!weather && !summary) {
     return (
       <View style={s.card}>
         <Text style={s.sectionTitle}>🌤️  Weather</Text>
@@ -651,16 +669,34 @@ function WeatherCard({ weather }) {
       </View>
     );
   }
+
+  // Prefer summary fields when available (richer data), fall back to raw weather
+  const temp      = summary?.temperature      ?? weather?.temperature_current;
+  const condition = summary?.condition        ?? weather?.condition;
+  const humidity  = summary?.humidity         ?? weather?.humidity;
+  const windSpeed = weather?.wind_speed;
+  const rain24    = summary
+    ? summary.rain_chance_24h
+    : weather?.rainfall_probability_24h != null
+      ? Math.round(weather.rainfall_probability_24h * 100)
+      : null;
+  const rain48    = summary?.rain_chance_48h ?? null;
+  const advisory  = summary?.farming_advisory;
+  const advType   = summary?.advisory_type ?? 'good';
+  const advStyle  = ADVISORY_STYLE[advType] ?? ADVISORY_STYLE.good;
+
   return (
     <View style={wc.card}>
       {/* Hero row */}
       <View style={wc.hero}>
-        <Text style={wc.heroEmoji}>{weatherEmoji(weather.condition)}</Text>
+        <Text style={wc.heroEmoji}>
+          {summary?.condition_emoji ?? weatherEmoji(condition)}
+        </Text>
         <View style={wc.heroRight}>
           <Text style={wc.heroTemp}>
-            {weather.temperature_current != null ? `${weather.temperature_current}°C` : '—'}
+            {temp != null ? `${temp}°C` : '—'}
           </Text>
-          <Text style={wc.heroCondition}>{weather.condition ?? '—'}</Text>
+          <Text style={wc.heroCondition}>{condition ?? '—'}</Text>
           <Text style={wc.heroDate}>{new Date().toLocaleDateString('en-KE', { weekday:'long', day:'numeric', month:'short' })}</Text>
         </View>
       </View>
@@ -668,21 +704,20 @@ function WeatherCard({ weather }) {
       {/* Stats strip */}
       <View style={wc.strip}>
         <WeatherStat icon="💧" label="Humidity"
-          value={weather.humidity != null ? `${weather.humidity}%` : '—'} />
+          value={humidity != null ? `${humidity}%` : '—'} />
         <View style={wc.stripDivider} />
         <WeatherStat icon="💨" label="Wind"
-          value={weather.wind_speed != null ? `${weather.wind_speed} km/h` : '—'} />
+          value={windSpeed != null ? `${windSpeed} km/h` : '—'} />
         <View style={wc.stripDivider} />
-        <WeatherStat icon="🌧️" label="Rain 24h"
-          value={weather.rainfall_probability_24h != null
-            ? `${Math.round(weather.rainfall_probability_24h * 100)}%` : '—'} />
+        <WeatherStat icon="🌧️" label="Rain 48h"
+          value={rain48 != null ? `${rain48}%` : rain24 != null ? `${rain24}%` : '—'} />
       </View>
 
-      {weather.frost_probability > 0.3 && (
-        <View style={wc.frost}>
-          <Text style={wc.frostText}>
-            🥶  Frost risk {Math.round(weather.frost_probability * 100)}% — protect crops tonight
-          </Text>
+      {/* Farming advisory — the most useful info for the farmer */}
+      {!!advisory && (
+        <View style={[wc.advisory, { backgroundColor: advStyle.bg, borderLeftColor: advStyle.border }]}>
+          <Text style={wc.advisoryEmoji}>{advStyle.emoji}</Text>
+          <Text style={[wc.advisoryText, { color: advStyle.text }]}>{advisory}</Text>
         </View>
       )}
     </View>
@@ -1031,12 +1066,13 @@ const wc = StyleSheet.create({
   statIcon: { fontSize: 20 },
   statVal:  { fontSize: 15, fontWeight: '800', color: '#111827' },
   statLabel:{ fontSize: 11, color: '#9CA3AF', fontWeight: '500' },
-  frost: {
-    marginTop: 12, backgroundColor: '#EFF6FF',
-    borderRadius: 12, padding: 13,
-    borderLeftWidth: 4, borderLeftColor: '#3B82F6',
+  advisory: {
+    flexDirection: 'row', alignItems: 'center',
+    marginTop: 12, borderRadius: 12, padding: 13,
+    borderLeftWidth: 4, gap: 10,
   },
-  frostText: { fontSize: 13, color: '#1D4ED8', fontWeight: '600' },
+  advisoryEmoji: { fontSize: 18 },
+  advisoryText:  { flex: 1, fontSize: 13, fontWeight: '600', lineHeight: 19 },
 });
 
 const ai = StyleSheet.create({

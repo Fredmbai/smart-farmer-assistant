@@ -5,11 +5,11 @@ POTATO_RULES = {
     'moisture_warning_high': 80,
     'ph_min_critical': 4.5,
     'ph_max_critical': 8.0,
-    'ph_min_optimal': 5.0,
+    'ph_min_optimal': 5.5,   # updated — Kenyan soils optimum 5.5–6.5
     'ph_max_optimal': 6.5,
-    'late_blight_temp_max': 18,
-    'late_blight_humidity_min': 80,       # default threshold
-    'frost_temp_critical': 2,
+    'late_blight_temp_max': 20,   # updated — Kenya highlands often 15–20°C
+    'late_blight_humidity_min': 78,
+    'frost_temp_critical': 4,   # only very high altitude Kenyan farms
     'npk_n_low': 40,
     'npk_p_low': 20,
     'npk_k_low': 30,
@@ -209,8 +209,9 @@ class PotatoRuleEngine:
                 'title': 'Info: Monitor for blight (Kenya Mpya)',
                 'message': (
                     f"Temperature ({temp}°C) and humidity ({humidity}%) "
-                    f"are in blight-risk conditions. Kenya Mpya has high "
-                    f"blight resistance, but inspect leaves as a precaution."
+                    f"are in blight-risk conditions common in Nyandarua, Nakuru "
+                    f"and Meru highlands. Kenya Mpya has high blight resistance, "
+                    f"but inspect leaves as a precaution."
                 ),
                 'action_required': 'Inspect leaves for early blight signs.',
             })
@@ -226,7 +227,9 @@ class PotatoRuleEngine:
                 'title': 'Critical: Late Blight conditions detected',
                 'message': (
                     f"Temperature ({temp}°C) and humidity ({humidity}%) "
-                    f"are in the Late Blight danger zone "
+                    f"are in the Late Blight danger zone. "
+                    f"Late Blight thrives in cool, humid highland conditions "
+                    f"common in Nyandarua, Nakuru and Meru regions "
                     f"(threshold for this variety: {hum_threshold}% humidity). "
                     f"Late Blight (Phytophthora infestans) can destroy a crop "
                     f"within days.{variety_note} Apply fungicide immediately."
@@ -239,22 +242,23 @@ class PotatoRuleEngine:
         return results
 
     def _check_frost(self):
+        # Frost is rare in Kenya — only triggers for farms above ~2500m altitude
         results = []
         frost_prob = float(self.weather.get('frost_probability') or 0)
         temp = self.sensor.get('temperature')
 
-        if frost_prob >= 1.0 or (temp is not None and float(temp) <= 2):
+        if frost_prob >= 1.0 and temp is not None and float(temp) <= 4:
             results.append({
                 'rule_name': 'frost_risk',
-                'level': 'critical',
+                'level': 'warning',
                 'category': 'weather',
-                'title': 'Critical: Frost risk tonight',
+                'title': 'Warning: Unusually cold temperatures',
                 'message': (
-                    f"Freezing temperatures are forecast. "
-                    f"Potato plants will be severely damaged by frost. "
+                    f"Unusually cold temperatures detected ({float(temp):.1f}°C). "
+                    f"If your farm is above 2500m, protect crops tonight. "
                     f"Cover young plants with frost cloth or straw mulch."
                 ),
-                'action_required': 'Cover crops with frost protection material',
+                'action_required': 'Cover crops if farm is above 2500m altitude',
             })
         return results
 
